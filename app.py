@@ -1,69 +1,76 @@
-from flask import Flask, request, jsonify, render_template
-from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
-from datetime import datetime
 import os
+from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
+import firebase_admin
+from firebase_admin import credentials, firestore
+from datetime import datetime
 
+# Initialize Flask App
 app = Flask(__name__)
 CORS(app)
 
-# Database Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///finance.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+# Firebase Initialization
+try:
+    # Use environment variable for credentials path
+    cred_path = os.environ.get('FIREBASE_CREDENTIALS_PATH', 'path/to/serviceAccountKey.json')
+    cred = credentials.Certificate(cred_path)
+    firebase_admin.initialize_app(cred)
+except Exception as e:
+    print(f"Firebase initialization error: {e}")
 
-# Transaction Model
-class Transaction(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    amount = db.Column(db.Float, nullable=False)
-    category = db.Column(db.String(50), nullable=False)
-    transaction_type = db.Column(db.String(10), nullable=False)
-    description = db.Column(db.String(200))
-    date = db.Column(db.DateTime, default=datetime.utcnow)
+# Firestore Client
+db = firestore.client()
 
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'amount': self.amount,
-            'category': self.category,
-            'transaction_type': self.transaction_type,
-            'description': self.description,
-            'date': self.date.isoformat()
-        }
-
-# Create tables
-with app.app_context():
-    db.create_all()
-
-# Routes
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/add_transaction', methods=['POST'])
 def add_transaction():
-    data = request.json
-    new_transaction = Transaction(
-        amount=data['amount'],
-        category=data['category'],
-        transaction_type=data['type'],
-        description=data.get('description', '')
-    )
-    db.session.add(new_transaction)
-    db.session.commit()
-    return jsonify(new_transaction.to_dict()), 201
+    try:
+        data = request.json
+        transaction = {
+            'amount': float(data['amount']),
+            'category': data['category'],
+            'transaction_type': data['type'],
+            'description': data.get('description', ''),
+            'timestamp': firestore.SERVER_TIMESTAMP
+        }
+        
+        # Add to Firestore
+        transactions_ref = db.collection('transactions')
+        doc_ref = transactions_ref.add(transaction)
+        
+        return jsonify({
+            'id': doc_ref[1].id,
+            **transaction
+        }), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/transactions', methods=['GET'])
 def get_transactions():
-    transactions = Transaction.query.order_by(Transaction.date.desc()).all()
-    return jsonify([trans.to_dict() for trans in transactions])
+    try:
+        transactions_ref = db.collection('transactions')
+        transactions = transactions_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).stream()
+        
+        transaction_list = []
+        for transaction in transactions:
+            trans_dict = transaction.to_dict()
+            trans_dict['id'] = transaction.id
+            transaction_list.append(trans_dict)
+        
+        return jsonify(transaction_list)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/transaction/<int:transaction_id>', methods=['DELETE'])
+@app.route('/transaction/<transaction_id>', methods=['DELETE'])
 def delete_transaction(transaction_id):
-    transaction = Transaction.query.get_or_404(transaction_id)
-    db.session.delete(transaction)
-    db.session.commit()
-    return jsonify({'message': 'Transaction deleted'}), 200
+    try:
+        db.collection('transactions').document(transaction_id).delete()
+        return jsonify({'message': 'Transaction deleted'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
