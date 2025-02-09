@@ -12,8 +12,7 @@ CORS(app)
 load_dotenv()
 
 # Get credentials from environment variable
-firebase_creds = json.loads(os.environ.get('FIREBASE_CREDENTIALS'))
-cred = credentials.Certificate(firebase_creds)
+
 
 
 
