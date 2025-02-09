@@ -6,7 +6,6 @@ import firebase_admin
 from firebase_admin import credentials, firestore, auth
 from functools import wraps
 from datetime import datetime, timedelta
-import calendar
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -48,6 +47,12 @@ def verify_token():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route('/logout', methods=['POST'])
+@login_required
+def logout():
+    session.pop('user_id', None)
+    return jsonify({"status": "logged out"})
+
 @app.route('/')
 @login_required
 def index():
@@ -66,7 +71,6 @@ def add_transaction():
             'user_id': session['user_id'],
             'timestamp': firestore.SERVER_TIMESTAMP
         }
-        
         db.collection('transactions').add(transaction)
         return jsonify({"status": "success"}), 201
     except Exception as e:
@@ -77,6 +81,28 @@ def add_transaction():
 def get_transactions():
     try:
         user_id = session['user_id']
-        # Get current month's start and end dates
         today = datetime.now()
-        start_of_month = datetime(today.year, today.month, 1
+        start_of_month = datetime(today.year, today.month, 1)
+        if today.month == 12:
+            start_of_next_month = datetime(today.year + 1, 1, 1)
+        else:
+            start_of_next_month = datetime(today.year, today.month + 1, 1)
+        transactions_ref = db.collection('transactions')
+        query = transactions_ref.where('user_id', '==', user_id)\
+                                .where('timestamp', '>=', start_of_month)\
+                                .where('timestamp', '<', start_of_next_month)\
+                                .order_by('timestamp', direction=firestore.Query.DESCENDING)
+        results = query.stream()
+        transactions = []
+        for transaction in results:
+            trans_data = transaction.to_dict()
+            trans_data['id'] = transaction.id
+            if 'timestamp' in trans_data and trans_data['timestamp']:
+                trans_data['timestamp'] = trans_data['timestamp'].isoformat()
+            transactions.append(trans_data)
+        return jsonify(transactions), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+if __name__ == '__main__':
+    app.run(debug=True)
