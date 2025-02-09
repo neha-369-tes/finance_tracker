@@ -6,7 +6,8 @@ from firebase_admin import credentials, firestore
 from datetime import datetime
 import json
 from dotenv import load_dotenv
-
+app = Flask(__name__)
+CORS(app)
 # Load environment variables from .env file
 load_dotenv()
 
@@ -14,16 +15,19 @@ load_dotenv()
 firebase_creds = json.loads(os.environ.get('FIREBASE_CREDENTIALS'))
 cred = credentials.Certificate(firebase_creds)
 
-# Initialize Flask App
-app = Flask(__name__)
-CORS(app)
+
 
 # Firebase Initialization
 try:
-    # Use environment variable for credentials path
-    cred_path = os.environ.get('FIREBASE_CREDENTIALS_PATH', 'path/to/serviceAccountKey.json')
-    cred = credentials.Certificate(cred_path)
-    firebase_admin.initialize_app(cred)
+    # Get credentials from environment variable
+    firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS')
+    if firebase_creds_json:
+        cred_dict = json.loads(firebase_creds_json)
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+        db = firestore.client()
+    else:
+        raise ValueError("Firebase credentials not found in environment variables")
 except Exception as e:
     print(f"Firebase initialization error: {e}")
 
