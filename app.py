@@ -11,16 +11,24 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 CORS(app)
 
-# Firebase Initialization
+# Firebase Initialization - Manual Credentials
 try:
-    firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS')
-    if firebase_creds_json:
-        cred_dict = json.loads(firebase_creds_json)
-        cred = credentials.Certificate(cred_dict)
-        firebase_admin.initialize_app(cred)
-        db = firestore.client()
-    else:
-        raise ValueError("Firebase credentials not found")
+    firebase_creds = {
+        "apiKey": "AIzaSyDueqWta1lDz8C_3xeyl9OZoolqhzHUJtg",
+        "authDomain": "finance-tracker-834bf.firebaseapp.com",
+        "projectId": "finance-tracker-834bf",
+        "storageBucket": "finance-tracker-834bf.firebasestorage.app",
+        "messagingSenderId": "771731647058",
+        "appId": "1:771731647058:web:538f8ab5a44d3d68500d8b",
+        "measurementId": "G-PE1CNYFH5B"
+    }
+    
+    # Manually create a Firebase service account credential using the dictionary
+    cred_dict = firebase_creds
+    cred = credentials.Certificate(cred_dict)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    
 except Exception as e:
     print(f"Firebase initialization error: {e}")
 
@@ -34,7 +42,7 @@ def login_required(f):
 
 @app.route('/login', methods=['GET'])
 def login():
-    return render_template('login.html',firebase_api_key=os.environ.get('FIREBASE_API_KEY'))
+    return render_template('login.html', firebase_api_key=os.environ.get('FIREBASE_API_KEY'))
 
 @app.route('/verify_token', methods=['POST'])
 def verify_token():
@@ -44,8 +52,12 @@ def verify_token():
         user_id = decoded_token['uid']
         session['user_id'] = user_id
         return jsonify({"status": "success"})
+    except auth.InvalidIdTokenError as e:
+        return jsonify({"error": f"Invalid ID token: {str(e)}"}), 400
+    except auth.ExpiredIdTokenError as e:
+        return jsonify({"error": f"Expired ID token: {str(e)}"}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": f"Token verification failed: {str(e)}"}), 400
 
 @app.route('/logout', methods=['POST'])
 @login_required
@@ -73,8 +85,12 @@ def add_transaction():
         }
         db.collection('transactions').add(transaction)
         return jsonify({"status": "success"}), 201
+    except KeyError as e:
+        return jsonify({"error": f"Missing required field: {str(e)}"}), 400
+    except ValueError as e:
+        return jsonify({"error": f"Invalid value provided: {str(e)}"}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": f"Failed to add transaction: {str(e)}"}), 400
 
 @app.route('/get_transactions')
 @login_required
@@ -102,7 +118,7 @@ def get_transactions():
             transactions.append(trans_data)
         return jsonify(transactions), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": f"Failed to fetch transactions: {str(e)}"}), 400
 
 if __name__ == '__main__':
     app.run(debug=True)
