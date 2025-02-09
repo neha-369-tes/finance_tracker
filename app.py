@@ -34,7 +34,7 @@ def login_required(f):
 
 @app.route('/login', methods=['GET'])
 def login():
-    return render_template('login.html')
+    return render_template('login.html',firebase_api_key=os.environ.get('FIREBASE_API_KEY'))
 
 @app.route('/verify_token', methods=['POST'])
 def verify_token():
