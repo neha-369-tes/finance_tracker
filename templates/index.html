@@ -1,107 +1,150 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transaction Tracker</title>
-    
-    <!-- Firebase and Chart.js -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
+    <title>Finance Tracker Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body>
-    <h2>Recent Transactions</h2>
+<body class="bg-gray-100">
+    <nav class="bg-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">Finance Tracker</h1>
+            <div class="flex items-center space-x-4">
+                <span id="userName" class="text-gray-600"></span>
+                <a href="/logout" class="text-red-500 hover:text-red-700">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
 
-    <input type="number" id="amount" placeholder="Enter Amount (₹)">
-    <input type="text" id="category" placeholder="Category">
-    <select id="type">
-        <option value="income">Income</option>
-        <option value="expense">Expense</option>
-    </select>
-    <button onclick="addTransaction()">Add Transaction</button>
+    <div class="container mx-auto p-6">
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-gray-500 text-sm">Monthly Income</h3>
+                <div class="flex items-center justify-between">
+                    <p class="text-2xl font-bold text-green-600" id="monthlyIncome">$0</p>
+                    <button id="lockIncome" class="text-blue-500 hover:text-blue-700">
+                        <i class="fas fa-lock-open"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-gray-500 text-sm">Monthly Expenses</h3>
+                <p class="text-2xl font-bold text-red-600" id="monthlyExpenses">$0</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-gray-500 text-sm">Balance</h3>
+                <p class="text-2xl font-bold text-blue-600" id="balance">$0</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-gray-500 text-sm">Daily Average</h3>
+                <p class="text-2xl font-bold text-purple-600" id="dailyAverage">$0</p>
+            </div>
+        </div>
 
-    <table border="1">
-        <thead>
-            <tr>
-                <th>Category</th>
-                <th>Amount (₹)</th>
-                <th>Type</th>
-            </tr>
-        </thead>
-        <tbody id="transactionTable"></tbody>
-    </table>
+        <!-- Charts Section -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">Expense Trend</h3>
+                <canvas id="expenseChart"></canvas>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">Category Distribution</h3>
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
 
-    <canvas id="transactionChart"></canvas>
+        <!-- Transaction Form -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4">Add Transaction</h3>
+            <form id="transactionForm" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <input type="number" id="amount" placeholder="Amount" required class="p-2 border rounded">
+                <select id="type" required class="p-2 border rounded">
+                    <option value="income">Income</option>
+                    <option value="expense">Expense</option>
+                </select>
+                <input type="text" id="category" placeholder="Category" required class="p-2 border rounded">
+                <button type="submit" class="bg-blue-500 text-white p-2 rounded hover:bg-blue-600">
+                    Add Transaction
+                </button>
+            </form>
+        </div>
+
+        <!-- Transactions Table -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">Recent Transactions</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="p-3 text-left">Date</th>
+                            <th class="p-3 text-left">Category</th>
+                            <th class="p-3 text-left">Type</th>
+                            <th class="p-3 text-right">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
     <script>
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "{{ firebase_api_key }}",
-            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT_ID.appspot.com",
-            messagingSenderId: "YOUR_SENDER_ID",
-            appId: "YOUR_APP_ID"
-        };
-        
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-
-        function loadTransactions() {
-            fetch('/get_transactions')
-                .then(response => response.json())
-                .then(data => {
-                    let table = document.getElementById("transactionTable");
-                    table.innerHTML = "";
-                    
-                    data.forEach(txn => {
-                        let row = `<tr style="color: ${txn.transaction_type === 'income' ? 'green' : 'red'}">
-                            <td>${txn.category}</td>
-                            <td>₹${txn.amount}</td>
-                            <td>${txn.transaction_type}</td>
-                        </tr>`;
-                        table.innerHTML += row;
-                    });
-
-                    plotChart(data);
-                })
-                .catch(error => console.error('Error fetching transactions:', error));
-        }
-
-        function addTransaction() {
-            let amount = document.getElementById("amount").value;
-            let category = document.getElementById("category").value;
-            let type = document.getElementById("type").value;
-
-            fetch('/add_transaction', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ amount, category, type })
-            }).then(response => response.json())
-              .then(() => loadTransactions())
-              .catch(error => console.error('Error adding transaction:', error));
-
-            document.getElementById("amount").value = "";
-            document.getElementById("category").value = "";
-        }
-
-        function plotChart(transactions) {
-            let ctx = document.getElementById("transactionChart").getContext("2d");
-            new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: transactions.map(t => t.category),
-                    datasets: [{
-                        label: 'Amount (₹)',
-                        data: transactions.map(t => t.amount),
-                        backgroundColor: transactions.map(t => t.transaction_type === 'income' ? 'green' : 'red')
-                    }]
+        document.getElementById('transactionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                amount: document.getElementById('amount').value,
+                type: document.getElementById('type').value,
+                category: document.getElementById('category').value
+            };
+            
+            try {
+                const response = await fetch('/add_transaction', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    document.getElementById('transactionForm').reset();
+                    fetchTransactions();
                 }
-            });
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        async function fetchTransactions() {
+            try {
+                const response = await fetch('/get_transactions');
+                const transactions = await response.json();
+                let totalIncome = 0, totalExpenses = 0;
+                const transactionsList = document.getElementById('transactionsList');
+                transactionsList.innerHTML = transactions.map(t => {
+                    const amount = parseFloat(t.amount);
+                    t.transaction_type === 'income' ? totalIncome += amount : totalExpenses += amount;
+                    return `<tr class="border-t">
+                                <td class="p-3">${new Date(t.timestamp * 1000).toLocaleDateString()}</td>
+                                <td class="p-3">${t.category}</td>
+                                <td class="p-3">${t.transaction_type}</td>
+                                <td class="p-3 text-right ${t.transaction_type === 'income' ? 'text-green-600' : 'text-red-600'}">
+                                    ${t.transaction_type === 'income' ? '+' : '-'}$${amount.toFixed(2)}
+                                </td>
+                            </tr>`;
+                }).join('');
+                document.getElementById('monthlyIncome').textContent = `$${totalIncome.toFixed(2)}`;
+                document.getElementById('monthlyExpenses').textContent = `$${totalExpenses.toFixed(2)}`;
+                document.getElementById('balance').textContent = `$${(totalIncome - totalExpenses).toFixed(2)}`;
+            } catch (error) {
+                console.error('Error:', error);
+            }
         }
 
-        loadTransactions();
+        fetchTransactions();
     </script>
 </body>
 </html>
