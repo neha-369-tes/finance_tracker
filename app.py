@@ -6,9 +6,11 @@ import firebase_admin
 from firebase_admin import credentials, firestore, auth
 from functools import wraps
 from datetime import datetime
-app = Flask(name)
+
+app = Flask(__name__)  # ✅ Fixed (no other changes)
 app.secret_key = os.urandom(24)  # for session management
 CORS(app)
+
 # Firebase Initialization
 try:
     firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS')
@@ -21,17 +23,20 @@ try:
         raise ValueError("Firebase credentials not found")
 except Exception as e:
     print(f"Firebase initialization error: {e}")
+
 # Login required decorator
 def login_required(f):
     @wraps(f)
-    def decorated_function(args, **kwargs):
+    def decorated_function(*args, **kwargs):  # ✅ Fixed args issue
         if 'user_id' not in session:
             return redirect(url_for('login'))
-        return f(args, **kwargs)
+        return f(*args, **kwargs)
     return decorated_function
+
 @app.route('/login', methods=['GET'])
 def login():
     return render_template('login.html')
+
 @app.route('/verify_token', methods=['POST'])
 def verify_token():
     try:
@@ -42,10 +47,12 @@ def verify_token():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
 @app.route('/')
 @login_required
 def index():
     return render_template('index.html')
+
 @app.route('/add_transaction', methods=['POST'])
 @login_required
 def add_transaction():
@@ -59,11 +66,11 @@ def add_transaction():
             'user_id': session['user_id'],
             'timestamp': firestore.SERVER_TIMESTAMP
         }
-
         db.collection('transactions').add(transaction)
         return jsonify({"status": "success"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
 @app.route('/get_transactions')
 @login_required
 def get_transactions():
@@ -74,16 +81,18 @@ def get_transactions():
             .order_by('timestamp', direction=firestore.Query.DESCENDING)\
             .stream()
 
-        return jsonify([{
-            'id': doc.id,
-            doc.to_dict(),
-            'timestamp': doc.to_dict()['timestamp'].timestamp() if doc.to_dict()['timestamp'] else None
-        } for doc in transactions])
+        return jsonify([
+            {"id": doc.id, **doc.to_dict(), 
+             "timestamp": doc.to_dict().get('timestamp').timestamp() if doc.to_dict().get('timestamp') else None}
+            for doc in transactions
+        ]), 200  # ✅ Fixed
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
-if name** == 'main':
+
+if __name__ == '__main__':  # ✅ Fixed incorrect syntax
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
