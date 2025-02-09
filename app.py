@@ -5,10 +5,11 @@ from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timedelta
+import calendar
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # for session management
+app.secret_key = os.urandom(24)
 CORS(app)
 
 # Firebase Initialization
@@ -24,7 +25,6 @@ try:
 except Exception as e:
     print(f"Firebase initialization error: {e}")
 
-# Login required decorator
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -77,23 +77,6 @@ def add_transaction():
 def get_transactions():
     try:
         user_id = session['user_id']
-        transactions = db.collection('transactions')\
-            .where('user_id', '==', user_id)\
-            .order_by('timestamp', direction=firestore.Query.DESCENDING)\
-            .stream()
-        
-        return jsonify([{
-            'id': doc.id,
-            **doc.to_dict(),
-            'timestamp': doc.to_dict()['timestamp'].timestamp() if doc.to_dict()['timestamp'] else None
-        } for doc in transactions])
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+        # Get current month's start and end dates
+        today = datetime.now()
+        start_of_month = datetime(today.year, today.month, 1
